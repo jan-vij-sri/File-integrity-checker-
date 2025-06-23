@@ -1,0 +1,118 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox, scrolledtext
+import hashlib
+import json
+import os
+
+# Path to the hash database file
+HASH_DB = "file_hashes.json"
+
+# Function to calculate the SHA-256 hash of a file
+def calculate_hash(filepath):
+    sha256 = hashlib.sha256()
+    try:
+        with open(filepath, 'rb') as f:
+            while chunk := f.read(4096):
+                sha256.update(chunk)
+        return sha256.hexdigest()
+    except FileNotFoundError:
+        return None
+
+# Function to load saved hashes from the JSON file
+def load_hashes():
+    if os.path.exists(HASH_DB):
+        try:
+            with open(HASH_DB, 'r') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            messagebox.showerror(
+                "Error",
+                f"⚠ Failed to load the hash database ({HASH_DB}).\n\nIt may be corrupted or improperly formatted.\n\nA new database will be created."
+            )
+            return {}
+        except Exception as e:
+            messagebox.showerror("Unexpected Error", f"An error occurred: {str(e)}")
+            return {}
+    return {}
+
+# Function to save updated hashes back to the JSON file
+def save_hashes(hashes):
+    try:
+        with open(HASH_DB, 'w') as f:
+            json.dump(hashes, f, indent=4)
+    except Exception as e:
+        messagebox.showerror("Save Error", f"Could not save hash database:\n{str(e)}")
+
+# Main logic to compare current file hash with saved one
+def check_file(file_path):
+    old_hashes = load_hashes()
+    new_hash = calculate_hash(file_path)
+
+    if new_hash is None:
+        return "[ERROR] File not found."
+
+    if file_path not in old_hashes:
+        result = f"[NEW] {os.path.basename(file_path)} added to monitoring."
+    elif old_hashes[file_path] != new_hash:
+        result = f"[MODIFIED] {os.path.basename(file_path)} has changed!"
+    else:
+        result = f"[OK] {os.path.basename(file_path)} is unchanged."
+
+    old_hashes[file_path] = new_hash
+    save_hashes(old_hashes)
+    return result
+
+# Button action to select and check a file
+def select_file():
+    file_path = filedialog.askopenfilename(title="Select File to Monitor")
+    if file_path:
+        result = check_file(file_path)
+        status_text.set(result)
+        history_box.insert(tk.END, result + "\n")
+        history_box.yview(tk.END)
+
+# Show list of currently monitored files
+def view_monitored_files():
+    hashes = load_hashes()
+    if not hashes:
+        messagebox.showinfo("Monitored Files", "No files are currently being monitored.")
+    else:
+        file_list = "\n".join(hashes.keys())
+        messagebox.showinfo("Monitored Files", f"Monitored Files:\n\n{file_list}")
+
+# Create the GUI window
+app = tk.Tk()
+app.title("🛡 File Integrity Checker")
+app.geometry("520x420")
+app.resizable(False, False)
+app.config(bg="#f0f4f7")
+
+# App heading
+tk.Label(app, text="🛡 File Integrity Checker", font=("Segoe UI", 18, "bold"),
+         bg="#f0f4f7", fg="#003366").pack(pady=15)
+
+# Status label
+status_text = tk.StringVar()
+status_text.set("Select a file to check its integrity.")
+tk.Label(app, textvariable=status_text, font=("Segoe UI", 11),
+         bg="#f0f4f7", fg="black").pack(pady=5)
+
+# Buttons
+tk.Button(app, text="🔍 Select File", font=("Segoe UI", 11), command=select_file,
+          bg="#1d75bc", fg="white", padx=20, pady=5).pack(pady=10)
+
+tk.Button(app, text="📄 View Monitored Files", font=("Segoe UI", 10),
+          command=view_monitored_files, bg="#eeeeee", fg="#000").pack(pady=5)
+
+# Scan history label and box
+tk.Label(app, text="Scan History", font=("Segoe UI", 10, "bold"), bg="#f0f4f7").pack(pady=(10, 0))
+
+history_box = scrolledtext.ScrolledText(app, width=64, height=10, font=("Consolas", 10))
+history_box.pack(pady=5)
+
+# Footer
+tk.Label(app, text="© 2025 | File Checker with Hashlib",
+         font=("Segoe UI", 8), bg="#f0f4f7", fg="gray").pack(side="bottom", pady=10)
+
+# Start the main loop
+app.mainloop()
